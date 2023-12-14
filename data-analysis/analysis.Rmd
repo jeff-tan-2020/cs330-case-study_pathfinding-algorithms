@@ -1,0 +1,195 @@
+---
+title: "data_analysis"
+author: "Miles Eng"
+date: "11/12/2023"
+output: html_document
+---
+```{r load-packages}
+
+library(tidyverse)
+library(tidymodels)
+library(lubridate)
+library(patchwork)
+
+```
+
+Drivers data is useless since it reads from a queue that doesn't have all drivers (its fine though we have all the same data in rides)
+
+``` {r load-data}
+
+t1rides_1 <- read_csv('../results/t1rides_trial1.csv') |>
+  mutate(trial = 1)
+t1rides_2 <- read_csv('../results/t1rides_trial2.csv') |>
+  mutate(trial = 2)
+t1rides_3 <- read_csv('../results/t1rides_trial3.csv') |>
+  mutate(trial = 3)
+t1rides_4 <- read_csv('../results/t1rides_trial4.csv') |>
+  mutate(trial = 4)
+t1rides_5 <- read_csv('../results/t1rides_trial5.csv') |>
+  mutate(trial = 5)
+
+t1rides <- do.call("rbind", list(t1rides_1, t1rides_2, t1rides_3, t1rides_4, t1rides_5))
+
+t2rides <- read_csv('../results/t2rides.csv')
+t3rides <- read_csv('../results/t3rides.csv')
+t4rides <- read_csv('../results/t4rides.csv')
+# t5rides <- read_csv('../results/t5rides.csv')
+
+t1rides <- t1rides |>
+  select(-drivers_in_queue) |>
+  mutate(task = 1)
+
+t2rides <- t2rides |>
+  mutate(task = 2)
+
+t3rides <- t3rides |>
+  select(-dest_lat, -dest_lon, -source_lat, -source_lon, -driver_lat, -driver_lon) |>
+  mutate(task = 3,
+         match_runtime_sec = 0)
+
+t4rides <- t4rides |>
+  mutate(task = 4) 
+
+# t5rides <- t5rides |>
+#   mutate(task = 5)
+
+rides <- do.call("rbind", list(t1rides, t2rides, t3rides, t4rides))
+
+rides <- rides |>
+  mutate(driver_to_passenger_hours = driver_to_passenger,
+         passenger_to_dest_hours = passenger_to_dest) |>
+  select(-driver_to_passenger, -passenger_to_dest)
+
+rides <- rides |>
+  mutate(time_to_match_sec = as.numeric(ride_match_datetime - passenger_start_datetime),
+         passenger_wait_time_sec = time_to_match_sec + (driver_to_passenger_hours * 60 * 60),
+         passenger_wait_time_min = passenger_wait_time_sec / 60,
+         driver_to_passenger_min = driver_to_passenger_hours * 60,
+         passenger_to_dest_min = passenger_to_dest_hours * 60,
+         driver_profit_hours = passenger_to_dest_hours - driver_to_passenger_hours,
+         driver_profit_min = driver_profit_hours * 60,
+         did_driver_profit = if_else(driver_profit_hours > 0, 1, 0),
+         wait_category = case_when(passenger_wait_time_min < 5 ~ "short",
+                                   passenger_wait_time_min < 20 ~ "medium",
+                                   .default = "long"),
+         task = as.factor(task),
+         wait_category = fct_relevel(wait_category, "short", "medium", "long"),
+         total_d1_time_min = as.numeric(ride_match_datetime - passenger_start_datetime) / 60 + driver_to_passenger_min + passenger_to_dest_min)
+
+```
+
+# Exploratory Data Visualization
+
+```{r performance}
+
+t1runtimes <- data.frame(
+  task = c(1,1,1,1,1),
+  total_runtime_sec = c(1193.0641, 1130.689230203, NA, NA, NA),
+  queue_runtime_sec = c(80.5091679, 224.383005142211, NA, NA, NA)
+)
+
+t2runtimes <- data.frame(
+  task = c(2,2,2,2,2),
+  total_runtime_sec = c(1322.442229, 1148.78903698, NA, NA, NA),
+  queue_runtime_sec = c(82.2850890, 208.86551904, NA, NA, NA)
+)
+
+t3runtimes <- data.frame(
+  task = c(3,3,3,3,3),
+  total_runtime_sec = c(13892.306724071, NA, NA, NA, NA),
+  queue_runtime_sec = c(70.143744, NA, NA, NA, NA)
+)
+
+t4runtimes <- data.frame(
+  task = c(4,4,4,4,4),
+  total_runtime_sec = c(1242.4165439605, NA, NA, NA, NA),
+  queue_runtime_sec = c(0.772353887557, NA, NA, NA, NA)
+)
+
+t5runtimes <- data.frame(
+  task = c(5,5,5,5,5),
+  total_runtime_sec = c(NA, NA, NA, NA, NA),
+  queue_runtime_sec = c(NA, NA, NA, NA, NA)
+)
+
+runtime_data = do.call("rbind", list(t1runtimes, t2runtimes, t3runtimes, t4runtimes, t5runtimes))
+
+```
+
+D1. Passengers want to be dropped off as soon as possible, that is, to minimize 
+the amount of time (in minutes) between when they appear as an unmatched 
+passenger, and when they are dropped off at their destination.
+
+```{r}
+
+rides |>
+  ggplot(aes(x = passenger_start_datetime, y = total_d1_time_min, color = task)) +
+  geom_point() +
+  labs(title = "Fig 1. Total Passenger Wait Time",
+       x = "Passenger Ride Request Date/Time",
+       y = "Time from Ride Request to Completion (min)",
+       color = "Task") +
+  theme_bw()
+
+rides |>
+  ggplot(aes(x = total_d1_time_min, fill = task)) +
+  geom_boxplot()
+
+```
+
+
+D2. Drivers want to maximize ride profit, defined as the number of minutes they 
+spend driving passengers from pickup to drop-off locations minus the number 
+of minutes they spend driving to pick up passengers. For simplicity, there is 
+no penalty for the time when a driver is idle.
+
+```{r}
+
+rides |>
+  ggplot(aes(x = task, fill = as.factor(did_driver_profit))) +
+  geom_bar(position = "fill") +
+  coord_flip() +
+  labs(title = "Fig 2. Driver Ride Profit",
+       x = "Driver Profit",
+       fill = "Did Driver Profit") +
+  scale_fill_discrete(labels = c("False", "True"))
+
+```
+
+D3. Your algorithms should be empirically efficient and scalable.
+
+```{r}
+
+runtime_data |>
+  filter(!is.na(total_runtime_sec)) |>
+  mutate(task = as.factor(task)) |>
+  group_by(task) |>
+  summarize(mean_total_runtime_sec = mean(total_runtime_sec)) |>
+  ggplot(aes(x = task, y = mean_total_runtime_sec, fill = task)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = signif(round(mean_total_runtime_sec, digits = 3))), nudge_y = 500) +
+  labs(title = "Total Runtime of NotUber Matching Algorithm",
+       x = "Task",
+       y = "Total Runtime (sec)") +
+  scale_fill_manual(values=c("#1d4941", "#305c54", "#42665f", "#6e9991", "#93c0b8")) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+runtime_data |>
+  filter(!is.na(queue_runtime_sec)) |>
+  mutate(task = as.factor(task)) |>
+  group_by(task) |>
+  summarize(mean_queue_runtime_sec = mean(queue_runtime_sec)) |>
+  ggplot(aes(x = task, y = mean_queue_runtime_sec, fill = task)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = signif(round(mean_queue_runtime_sec, digits = 3))), nudge_y = 5) +
+  labs(title = "Runtime of Passenger and Driver Queue Construction",
+       x = "Task",
+       y = "Queue Runtime (sec)") +
+  scale_fill_manual(values=c("#1d4941", "#305c54", "#42665f", "#6e9991", "#93c0b8")) +
+  theme_bw() +
+  theme(legend.position = "none")
+
+```
+
+
