@@ -1,5 +1,5 @@
 # cs330-case-study_pathfinding-algorithms
-Fall 2023 Duke CS330 Case Study Project: Done with Miles Eng, Jeffery Tan, Reuben Bufffoe, and Elias Lai
+Fall 2023 Duke CS330 Case Study Project: Done with Miles Eng, Jeffery Tan, Reuben Buffoe, and Elias Lai
 
 ## Data
 Data in this case study was provided by the Duke CS330 Teaching Staff. 
