@@ -65,3 +65,7 @@ and then the least pickup time by running A* algorithm.
 probability of leaving with an increasing number of driving hours, net profits, and number of rides given.
 
 ## Results
+- Note: net profits are calcualted as (time for driver to get to the passenger's destination after pickup) - (time it takes for driver to pickup passenger)
+- Desire to maximize profits and minimize pickup time 
+![alt text](https://github.com/jeff-tan-2020/cs330-case-study_pathfinding-algorithms/blob/main/results/runtimes.png?raw=true)
+![alt text](https://github.com/jeff-tan-2020/cs330-case-study_pathfinding-algorithms/blob/main/results/results.png?raw=true)
